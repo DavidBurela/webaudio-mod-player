@@ -158,7 +158,7 @@ function updateSelectBox(e) {
       og += '<optgroup class="' + ((i & 1) ? "odd" : "even") + '" label="' + window.musicLibrary[i].composer + '">';
       for (j = 0; j < window.musicLibrary[i].songs.length; j++) {
         if (filter == "" || window.musicLibrary[i].songs[j].file.toLowerCase().indexOf(filter) >= 0) {
-          og += '<option class="' + ((i & 1) ? "odd" : "even") + '" value="' +
+          og += '<option class="' + ((i & 1) ? "odd" : "even") + '" modIpfsHash="' + window.musicLibrary[i].songs[j].hash  + '" value="' +
             window.musicLibrary[i].songs[j].file + '">' + window.musicLibrary[i].songs[j].file + ' ' +
             '<span class="filesize">(' + window.musicLibrary[i].songs[j].size + ' bytes)</span></option>';
           f++;
@@ -171,7 +171,7 @@ function updateSelectBox(e) {
         if (filter == "" ||
           window.musicLibrary[i].composer.toLowerCase().indexOf(filter) >= 0 ||
           window.musicLibrary[i].songs[j].file.toLowerCase().indexOf(filter) >= 0) {
-          og += '<option class="' + ((i & 1) ? "odd" : "even") + '" value="' + window.musicLibrary[i].composer + '/' +
+          og += '<option class="' + ((i & 1) ? "odd" : "even") + '" modIpfsHash="' + window.musicLibrary[i].songs[j].hash  + '" value="' + window.musicLibrary[i].composer + '/' +
             window.musicLibrary[i].songs[j].file + '">' + window.musicLibrary[i].songs[j].file + ' ' +
             '<span class="filesize">(' + window.musicLibrary[i].songs[j].size + ' bytes)</span></option>';
           f++;
@@ -268,6 +268,10 @@ function updateUI(timestamp) {
 
 
 $(document).ready(function () {
+  loadScreen();
+})
+
+const loadScreen = () => new Promise(async () => {
   window.module = new Modplayer();
   window.playlistPosition = 0;
   window.playlistActive = false;
@@ -513,7 +517,11 @@ $(document).ready(function () {
       if (!module.delayload) {
         window.currentModule = $("#modfile").val();
         window.playlistActive = false;
-        module.load(musicPath + $("#modfile").val());
+
+        var modIpfsHash = $( "select#modfile option:checked" ).attr('modIpfsHash');
+        console.log(`selected modIpfsHash: ${modIpfsHash}`)
+
+        module.load(musicPath + $("#modfile").val(), modIpfsHash);
         clearInterval(loadInterval);
         showLoaderInfo(module);
       }
@@ -683,32 +691,64 @@ $(document).ready(function () {
   });
 
   // all done, load the song library and default module
-  var request = new XMLHttpRequest();
-  request.open("GET", "/musicLibrary.php", true);
-  request.responseType = "json";
-  request.onload = function () {
-    window.musicLibrary = eval(request.response);
-    updateSelectBox(null);
 
-    if (window.defaultComposer != "") {
-      $("#loadfilter").val(window.defaultComposer);
-      updateSelectBox(null);
-      $("#modfile optgroup[label='" + window.defaultComposer + "'] > option:first").attr('selected', 'selected');
-      $("#load_song").click();
-    } else {
-      $('#modfile option[value="' + window.currentModule + '"]').attr('selected', 'selected');
-      if ($("#modfile").val() != "") {
-        var loadInterval = setInterval(function () {
-          if (!module.delayload) {
-            window.currentModule = $("#modfile").val();
-            window.playlistActive = false;
-            module.load(musicPath + $("#modfile").val());
-            clearInterval(loadInterval);
-            showLoaderInfo(module);
-          }
-        }, 200);
+  // TODO: This should be extracted somewhere else
+  const getIpfs = () => new Promise((resolve, reject) => {
+    if(window.resolvedIpfs){
+      return resolve(window.resolvedIpfs)
+    }
+    if (window.ipfs) {
+      if (window.ipfs.enable) {
+        console.log('window.ipfs.enable is available!')
+        // improve UX by asking for permissions upfront
+        return resolve(window.ipfs.enable({ commands: ['id', 'version', 'files.cat', 'ls'] }))
       }
+      console.log('legacy window.ipfs is available!')
+      return resolve(window.ipfs)
+    }
+
+    console.log('window.ipfs is not available, downloading from CDN...')
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/ipfs/dist/index.min.js'
+    script.onload = () => {
+      console.log('starting IPFS node')
+      const ipfs = new window.Ipfs()
+      ipfs.once('ready', () => resolve(ipfs))
+    }
+    script.onerror = reject
+    document.body.appendChild(script)
+  })
+
+  // init IPFS and print node info
+  var ipfs = await getIpfs();
+  window.resolvedIpfs = ipfs; // load it once, store so others can retrieve the resolved IPFS instance
+  var id = await ipfs.id();
+  console.log(`IPFS running ${id.agentVersion} with ID ${id.id}`);
+
+  // query the mod music folder
+  var ipfsLibrary = await ipfs.cat('QmSfT4aySenZUatqDUcwrMUhyW7wdWr3H2UEKbpZstwB2E')
+  console.log(`Loaded mod music folder from IPFS: ${ipfsLibrary.toString()}`);
+
+  window.musicLibrary = eval(ipfsLibrary.toString());
+  updateSelectBox(null);
+
+  if (window.defaultComposer != "") {
+    $("#loadfilter").val(window.defaultComposer);
+    updateSelectBox(null);
+    $("#modfile optgroup[label='" + window.defaultComposer + "'] > option:first").attr('selected', 'selected');
+    $("#load_song").click();
+  } else {
+    $('#modfile option[value="' + window.currentModule + '"]').attr('selected', 'selected');
+    if ($("#modfile").val() != "") {
+      var loadInterval = setInterval(function () {
+        if (!module.delayload) {
+          window.currentModule = $("#modfile").val();
+          window.playlistActive = false;
+          module.load(musicPath + $("#modfile").val());
+          clearInterval(loadInterval);
+          showLoaderInfo(module);
+        }
+      }, 200);
     }
   }
-  request.send();
 });

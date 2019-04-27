@@ -57,7 +57,8 @@ function Modplayer() {
 
 
 // load module from url into local buffer
-Modplayer.prototype.load = function (url) {
+Modplayer.prototype.load = function (url, modIpfsHash) {
+  console.log(`loading hash: ${modIpfsHash}`)
   // try to identify file format from url and create a new
   // player class for it
   this.url = url;
@@ -87,17 +88,30 @@ Modplayer.prototype.load = function (url) {
   this.player.onReady = this.loadSuccess;
 
   this.state = "loading..";
-  var request = new XMLHttpRequest();
-  request.open("GET", this.url, true);
-  request.responseType = "arraybuffer";
-  this.request = request;
   this.loading = true;
   var asset = this;
-  request.onprogress = function (oe) {
-    asset.state = "loading (" + Math.floor(100 * oe.loaded / oe.total) + "%)..";
-  };
-  request.onload = function () {
-    var buffer = new Uint8Array(request.response);
+  // I don't think I can do percentage loading
+  // request.onprogress = function (oe) {
+  //   asset.state = "loading (" + Math.floor(100 * oe.loaded / oe.total) + "%)..";
+  // };
+
+  const retrieveFromIpfs = (modIpfsHash) => new Promise(async () => {
+
+    console.log("in do stuff")
+    console.log(`retrieving hash: ${modIpfsHash}`)
+    console.log(modIpfsHash)
+    var ipfs = window.resolvedIpfs;
+
+    var id = await ipfs.id();
+    console.log(`running ${id.agentVersion} with ID ${id.id}`);
+    var data = await ipfs.cat(modIpfsHash)
+    console.log(data)
+
+
+    console.log("outputting response: ")
+    console.log(data)
+
+    var buffer = new Uint8Array(data);
     this.state = "parsing..";
     if (asset.player.parse(buffer)) {
       // copy static data from player
@@ -125,8 +139,9 @@ Modplayer.prototype.load = function (url) {
       asset.state = "error!";
       asset.loading = false;
     }
-  }
-  request.send();
+  });
+
+  retrieveFromIpfs(modIpfsHash);
   return true;
 }
 

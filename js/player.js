@@ -103,13 +103,7 @@ Modplayer.prototype.load = function (url, modIpfsHash) {
     var ipfs = window.resolvedIpfs;
 
     var id = await ipfs.id();
-    console.log(`running ${id.agentVersion} with ID ${id.id}`);
     var data = await ipfs.cat(modIpfsHash)
-    console.log(data)
-
-
-    console.log("outputting response: ")
-    console.log(data)
 
     var buffer = new Uint8Array(data);
     this.state = "parsing..";

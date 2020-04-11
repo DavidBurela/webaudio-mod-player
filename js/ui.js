@@ -272,6 +272,7 @@ $(document).ready(function () {
 })
 
 const loadScreen = () => new Promise(async () => {
+  console.log("LOADING SCREEN")
   window.module = new Modplayer();
   window.playlistPosition = 0;
   window.playlistActive = false;
